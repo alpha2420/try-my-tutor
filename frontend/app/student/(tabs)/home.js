@@ -7,11 +7,37 @@ import { Input } from '../../../components/ui/Input';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useState, useCallback } from 'react';
+import axios from 'axios';
+import { API_URL } from '../../../config';
 
 export default function StudentHome() {
     const user = auth.currentUser;
     const router = useRouter();
+    const [sessions, setSessions] = useState([]);
+
+    const fetchSessions = async () => {
+        try {
+            const token = await user.getIdToken();
+            const response = await axios.get(`${API_URL}/api/sessions`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            // Filter for upcoming sessions logic if backend returns all
+            // For now, assume backend returns all, we can filter or just show.
+            // Let's simplified show all or filter future.
+            const upcoming = response.data.sessions.filter(s => new Date(s.start_time) > new Date()).slice(0, 3);
+            setSessions(upcoming);
+        } catch (error) {
+            console.error('Error fetching sessions:', error);
+        }
+    };
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchSessions();
+        }, [])
+    );
 
     const subjects = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'History'];
 
@@ -71,8 +97,39 @@ export default function StudentHome() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Upcoming Sessions</CardTitle>
-                            <CardDescription>You have no upcoming sessions.</CardDescription>
+                            {sessions.length === 0 ? (
+                                <CardDescription>You have no upcoming sessions.</CardDescription>
+                            ) : null}
                         </CardHeader>
+                        {sessions.length > 0 && (
+                            <CardContent className="pt-0">
+                                {sessions.map((session) => (
+                                    <View key={session.id} className="mb-4 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                                        <Text className="font-bold text-slate-900">
+                                            {session.tutors?.users?.full_name || 'Tutor'}
+                                        </Text>
+                                        <Text className="text-slate-500 text-sm">
+                                            {new Date(session.start_time).toLocaleDateString()} at {new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </Text>
+                                        {session.meeting_link && (
+                                            <TouchableOpacity onPress={() => {/* Open Link */ }}>
+                                                <Text className="text-blue-600 text-xs mt-1">Join Meeting</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                ))}
+                            </CardContent>
+                        )}
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>My Requirements</CardTitle>
+                            <CardDescription>View your posted jobs and received bids.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button variant="outline" onPress={() => router.push('/student/requirements')}>View All</Button>
+                        </CardContent>
                     </Card>
                 </View>
 

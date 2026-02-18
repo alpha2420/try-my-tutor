@@ -5,13 +5,22 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../../components/ui/Avat
 import { Badge } from '../../../components/ui/Badge';
 import { Input } from '../../../components/ui/Input';
 import { Ionicons } from '@expo/vector-icons';
+import { useTutorGuard } from '../../../hooks/useTutorGuard';
 
 export default function TutorChat() {
+    const { loading: guardLoading, isComplete } = useTutorGuard();
+
     // Mock conversations
     const chats = [
         { id: 1, name: 'Alice Student', lastMessage: 'Thank you for the session!', time: '10m ago', unread: 1, avatar: 'AS' },
         { id: 2, name: 'Bob Learner', lastMessage: 'I have a question about the homework.', time: '3h ago', unread: 0, avatar: 'BL' },
     ];
+
+    if (guardLoading || !isComplete) return (
+        <SafeAreaView className="flex-1 items-center justify-center">
+            <Text>Checking Profile...</Text>
+        </SafeAreaView>
+    );
 
     return (
         <SafeAreaView className="flex-1 bg-slate-50">

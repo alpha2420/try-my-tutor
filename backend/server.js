@@ -27,6 +27,8 @@ const requirementRoutes = require('./routes/requirementRoutes');
 const bidRoutes = require('./routes/bidRoutes');
 const coreRoutes = require('./routes/coreRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const messageRoutes = require('./routes/messageRoutes');
+const sessionRoutes = require('./routes/sessionRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -34,6 +36,8 @@ app.use('/api/requirements', requirementRoutes);
 app.use('/api/bids', bidRoutes);
 app.use('/api/core', coreRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 const supabase = require('./config/supabaseClient');
 

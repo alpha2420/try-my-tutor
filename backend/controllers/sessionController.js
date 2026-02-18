@@ -1,17 +1,25 @@
 const supabase = require('../config/supabaseClient');
 
 const createSession = async (req, res) => {
-    const { student_id, tutor_id, requirement_id, start_time, end_time, meeting_link } = req.body;
-
-    // Validate users (skipped for brevity, but should verify they exist)
+    const userId = req.user.uid;
+    const { tutor_id, requirement_id, start_time, end_time, meeting_link } = req.body;
 
     try {
+        // Get student ID from Auth
+        const { data: student, error: userError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('firebase_uid', userId)
+            .single();
+
+        if (userError || !student) return res.status(404).json({ error: 'User not found' });
+
         const { data, error } = await supabase
             .from('sessions')
             .insert([{
-                student_id,
+                student_id: student.id,
                 tutor_id,
-                requirement_id, // Optional if direct booking
+                requirement_id,
                 start_time,
                 end_time,
                 meeting_link,

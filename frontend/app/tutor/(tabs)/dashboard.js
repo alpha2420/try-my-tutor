@@ -9,8 +9,10 @@ import { useRouter } from 'expo-router';
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { API_URL } from '../../../config';
+import { useTutorGuard } from '../../../hooks/useTutorGuard';
 
 export default function TutorDashboard() {
+    const { loading: guardLoading, isComplete } = useTutorGuard();
     const user = auth.currentUser;
     const router = useRouter();
     const [requirements, setRequirements] = useState([]);
@@ -78,6 +80,12 @@ export default function TutorDashboard() {
             setSubmitting(false);
         }
     };
+
+    if (guardLoading || !isComplete) return (
+        <SafeAreaView className="flex-1 items-center justify-center">
+            <Text>Checking Profile...</Text>
+        </SafeAreaView>
+    );
 
     return (
         <SafeAreaView className="flex-1 bg-slate-50">

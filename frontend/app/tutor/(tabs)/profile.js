@@ -24,6 +24,10 @@ export default function TutorProfile() {
     const [bio, setBio] = useState('');
     const [hourlyRate, setHourlyRate] = useState('');
     const [subjects, setSubjects] = useState(''); // Comma separated for now
+    const [experience, setExperience] = useState('');
+    const [qualifications, setQualifications] = useState('');
+    const [availability, setAvailability] = useState('');
+    const [documents, setDocuments] = useState('');
 
     useEffect(() => {
         fetchProfile();
@@ -41,6 +45,19 @@ export default function TutorProfile() {
             // Populate form
             setBio(p?.bio || '');
             setHourlyRate(p?.hourly_rate?.toString() || '');
+            setExperience(p?.experience_years?.toString() || '');
+            setQualifications(p?.qualifications || '');
+            // Availability: check if it's object or string. Backend schema says JSONB but userController handles pass through.
+            // If it's a string in DB/Controller, fine. If JSON, we might need to stringify/parse.
+            // Let's treat as string for MVP "Monday 10-5"
+            setAvailability(typeof p?.availability === 'string' ? p.availability : JSON.stringify(p?.availability || '').replace(/^"|"$/g, ''));
+
+            // Documents: Array of strings. Join for input.
+            if (Array.isArray(p?.verification_documents)) {
+                setDocuments(p.verification_documents.join(', '));
+            } else {
+                setDocuments(p?.verification_documents || '');
+            }
 
             // Parse subjects if available
             if (p?.tutor_subjects && Array.isArray(p.tutor_subjects)) {
@@ -66,7 +83,11 @@ export default function TutorProfile() {
             await axios.put(`${API_URL}/api/users/profile`, {
                 bio,
                 hourly_rate: parseFloat(hourlyRate) || 0,
-                subjects: subjectList
+                subjects: subjectList,
+                experience_years: parseInt(experience) || 0,
+                qualifications,
+                availability,
+                verification_documents: documents.split(',').map(d => d.trim()).filter(d => d)
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -119,7 +140,7 @@ export default function TutorProfile() {
                 <Card className="mb-6">
                     <CardHeader>
                         <CardTitle>Professional Details</CardTitle>
-                        <CardDescription>Update your qualifications and bio</CardDescription>
+                        <CardDescription>Update your qualifications and expertise</CardDescription>
                     </CardHeader>
                     <CardContent className="gap-4">
                         <View>
@@ -142,19 +163,68 @@ export default function TutorProfile() {
                                 onChangeText={setSubjects}
                             />
                         </View>
+                        <View className="flex-row gap-4">
+                            <View className="flex-1">
+                                <Text className="text-sm font-medium text-slate-700 mb-1">Hourly Rate ($)</Text>
+                                <Input
+                                    placeholder="20"
+                                    keyboardType="numeric"
+                                    className="bg-slate-50"
+                                    value={hourlyRate}
+                                    onChangeText={setHourlyRate}
+                                />
+                            </View>
+                            <View className="flex-1">
+                                <Text className="text-sm font-medium text-slate-700 mb-1">Experience (Years)</Text>
+                                <Input
+                                    placeholder="5"
+                                    keyboardType="numeric"
+                                    className="bg-slate-50"
+                                    value={experience}
+                                    onChangeText={setExperience}
+                                />
+                            </View>
+                        </View>
                         <View>
-                            <Text className="text-sm font-medium text-slate-700 mb-1">Hourly Rate ($)</Text>
+                            <Text className="text-sm font-medium text-slate-700 mb-1">Qualifications</Text>
                             <Input
-                                placeholder="20"
-                                keyboardType="numeric"
+                                placeholder="M.Sc in Physics, B.Ed..."
                                 className="bg-slate-50"
-                                value={hourlyRate}
-                                onChangeText={setHourlyRate}
+                                value={qualifications}
+                                onChangeText={setQualifications}
                             />
                         </View>
                     </CardContent>
+                </Card>
+
+                <Card className="mb-6">
+                    <CardHeader>
+                        <CardTitle>Availability & Verification</CardTitle>
+                        <CardDescription>Set your schedule and upload proofs</CardDescription>
+                    </CardHeader>
+                    <CardContent className="gap-4">
+                        <View>
+                            <Text className="text-sm font-medium text-slate-700 mb-1">Availability (e.g. Mon-Fri: 10am-5pm)</Text>
+                            <Input
+                                placeholder="Weekdays 4 PM - 8 PM"
+                                className="bg-slate-50"
+                                value={availability}
+                                onChangeText={setAvailability}
+                            />
+                        </View>
+                        <View>
+                            <Text className="text-sm font-medium text-slate-700 mb-1">Verification Documents (Link)</Text>
+                            <Input
+                                placeholder="https://drive.google.com/..."
+                                className="bg-slate-50"
+                                value={documents}
+                                onChangeText={setDocuments}
+                            />
+                            <Text className="text-xs text-slate-400 mt-1">Provide a link to your resume/certificates.</Text>
+                        </View>
+                    </CardContent>
                     <View className="p-6 pt-0">
-                        <Button variant="outline" onPress={saveProfile} loading={saving}>
+                        <Button onPress={saveProfile} loading={saving}>
                             Save Changes
                         </Button>
                     </View>

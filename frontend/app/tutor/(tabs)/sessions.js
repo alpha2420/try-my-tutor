@@ -4,12 +4,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../..
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Ionicons } from '@expo/vector-icons';
+import { useTutorGuard } from '../../../hooks/useTutorGuard';
 
 export default function TutorSessions() {
+    const { loading: guardLoading, isComplete } = useTutorGuard();
+
     const sessions = [
         { id: 1, student: 'Alice Student', subject: 'Math', date: 'Today, 5:00 PM', status: 'Upcoming' },
         { id: 2, student: 'Bob Learner', subject: 'Physics', date: 'Tomorrow, 2:00 PM', status: 'Confirmed' },
     ];
+
+    if (guardLoading || !isComplete) return (
+        <SafeAreaView className="flex-1 items-center justify-center">
+            <Text>Checking Profile...</Text>
+        </SafeAreaView>
+    );
 
     return (
         <SafeAreaView className="flex-1 bg-slate-50">
