@@ -64,7 +64,7 @@ export default function StudentHome() {
                             <CardDescription>Tell us what you need and let tutors contact you.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Button onPress={() => { }}>Post Requirement</Button>
+                            <Button onPress={() => router.push('/student/post-requirement')}>Post Requirement</Button>
                         </CardContent>
                     </Card>
 

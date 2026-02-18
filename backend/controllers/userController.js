@@ -62,11 +62,40 @@ const updateProfile = async (req, res) => {
                 .eq('user_id', user.id);
             if (error) throw error;
         } else if (user.role === 'tutor') {
-            const { error } = await supabase
-                .from('tutors')
-                .update(updates)
-                .eq('user_id', user.id);
-            if (error) throw error;
+            // Extract subjects from updates if present
+            const { subjects, ...profileUpdates } = updates;
+
+            if (Object.keys(profileUpdates).length > 0) {
+                const { error } = await supabase
+                    .from('tutors')
+                    .update(profileUpdates)
+                    .eq('user_id', user.id);
+                if (error) throw error;
+            }
+
+            if (subjects && Array.isArray(subjects)) {
+                // Handle subjects update
+                // 1. Get Subject IDs
+                const subjectIds = [];
+                for (const subjectName of subjects) {
+                    let { data: subject } = await supabase.from('subjects').select('id').eq('name', subjectName).single();
+                    if (!subject) {
+                        const { data: newSubject } = await supabase.from('subjects').insert([{ name: subjectName }]).select().single();
+                        subject = newSubject;
+                    }
+                    if (subject) subjectIds.push(subject.id);
+                }
+
+                // 2. Delete existing tutor_subjects
+                await supabase.from('tutor_subjects').delete().eq('tutor_id', user.id);
+
+                // 3. Insert new tutor_subjects
+                if (subjectIds.length > 0) {
+                    const tutorSubjects = subjectIds.map(sid => ({ tutor_id: user.id, subject_id: sid }));
+                    const { error: subError } = await supabase.from('tutor_subjects').insert(tutorSubjects);
+                    if (subError) throw subError;
+                }
+            }
         }
 
         res.json({ message: 'Profile updated successfully' });

@@ -62,15 +62,15 @@ export default function StudentProfile() {
                     <CardContent className="gap-2">
                         <Button variant="outline" className="justify-start pl-0 border-0">
                             <Ionicons name="notifications-outline" size={20} color="#0f172a" className="mr-2" />
-                            Notifications
+                            <Text className="text-slate-900 font-medium text-sm">Notifications</Text>
                         </Button>
                         <Button variant="outline" className="justify-start pl-0 border-0">
                             <Ionicons name="lock-closed-outline" size={20} color="#0f172a" className="mr-2" />
-                            Privacy & Security
+                            <Text className="text-slate-900 font-medium text-sm">Privacy & Security</Text>
                         </Button>
                         <Button variant="outline" className="justify-start pl-0 border-0">
                             <Ionicons name="help-circle-outline" size={20} color="#0f172a" className="mr-2" />
-                            Help & Support
+                            <Text className="text-slate-900 font-medium text-sm">Help & Support</Text>
                         </Button>
                     </CardContent>
                 </Card>
