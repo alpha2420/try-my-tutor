@@ -19,6 +19,13 @@ export default function StudentTabLayout() {
                 }}
             />
             <Tabs.Screen
+                name="sessions"
+                options={{
+                    title: 'Sessions',
+                    tabBarIcon: ({ color }) => <Ionicons name="videocam" size={24} color={color} />,
+                }}
+            />
+            <Tabs.Screen
                 name="chat"
                 options={{
                     title: 'Messages',

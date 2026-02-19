@@ -13,7 +13,7 @@ export default function ChatRoom() {
     const { id, name, role } = useLocalSearchParams(); // id is the OTHER user's ID
     const router = useRouter();
     const user = auth.currentUser;
-    const { socket, isConnected } = useSocket();
+    const { socket, isConnected, userId } = useSocket();
 
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
@@ -25,32 +25,36 @@ export default function ChatRoom() {
         fetchMessages();
 
         if (socket) {
-            // socket.emit('join_room', ...); // Handled in Context for now, or ensure we listen
-
             socket.on('receive_message', (data) => {
-                // Check if this message belongs to current conversation
-                const isParticipating =
-                    (data.sender_id === user?.uid && data.receiver_id === id) ||
-                    (data.sender_id === id && data.receiver_id === user?.uid) ||
-                    // Handle if IDs are database IDs vs Firebase UIDs. 
-                    // Our socket logic sends { sender_id, receiver_id }. 
-                    // Note: API uses database IDs for messages, but socket might use either.
-                    // Let's ensure consistency. user.uid is Firebase ID. id param is database ID (likely).
-                    // We need to map or be consistent.
-                    // For now, let's assume `id` param is Database ID.
-                    true; // Simplified filtering for now, ideally strictly check IDs.
+                // Check participation: sender or receiver must be this chat's counterpart OR me
+                // data.sender_id === id (other) AND data.receiver_id === userId (me)
+                // OR data.sender_id === userId (me) AND data.receiver_id === id (other) (handled by optimistic, but safe to ignore or dedupe)
 
-                if (true) { // TODO: Add strict ID check
-                    setMessages((prev) => [...prev, data]);
+                // Simple logic: If message involves 'id' (partner), add it.
+                // Assuming 'id' is distinct.
+                if (relevant) {
+                    setMessages((prev) => {
+                        return [...prev, data];
+                    });
                     scrollToBottom();
                 }
             });
+
+            socket.on('message_error', (data) => {
+                Alert.alert("Delivery Failed", "Message could not be sent. Please check your network or try again.");
+                // Optionally remove the optimistic message
+            });
+
+            return () => {
+                socket.off('receive_message');
+                socket.off('message_error');
+            };
 
             return () => {
                 socket.off('receive_message');
             };
         }
-    }, [socket, id]);
+    }, [socket, id, userId]); // added userId dependency
 
     const fetchMessages = async () => {
         try {
@@ -63,31 +67,49 @@ export default function ChatRoom() {
             scrollToBottom();
         } catch (error) {
             console.error('Error fetching messages:', error);
-            // Alert.alert('Error', 'Failed to load messages');
         } finally {
             setLoading(false);
         }
     };
 
+    const [localUserId, setLocalUserId] = useState(null);
+    const effectiveUserId = userId || localUserId;
+
+    useEffect(() => {
+        // Fallback: If context didn't get userId, try fetching it here
+        if (!userId && user) {
+            const fetchId = async () => {
+                try {
+                    const token = await user.getIdToken();
+                    const res = await axios.get(`${API_URL}/api/users/profile`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    if (res.data.user?.id) {
+                        console.log("Fetched local user ID:", res.data.user.id);
+                        setLocalUserId(res.data.user.id);
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch local ID", e);
+                }
+            };
+            fetchId();
+        }
+    }, [userId, user]);
+
     const sendMessage = async () => {
         if (!newMessage.trim()) return;
 
+        if (!effectiveUserId) {
+            Alert.alert("Error", "User ID not found. Re-fetching...");
+            // Trigger re-fetch logic or just hope the effect runs
+            return;
+        }
+
         const messageData = {
-            sender_id: user.uid, // This might need to be DB ID if backend expects it. 
-            // The backend messageController uses DB IDs query. 
-            // The socket server saves using `sender_id`.
-            // We need to send DB ID. 
-            // Problem: Frontend usually only knows Firebase UID unless we fetch profile.
-            // Let's rely on backend to lookup or send Firebase UID and let backend resolve it?
-            // Current backend socket implementation: `const { sender_id, receiver_id, content } = data;` -> inserts directly.
-            // This implies `sender_id` MUST be UUID.
-            // So we need to know our own UUID.
-            // WORKAROUND: For now, I'll update `SocketContext` or fetch profile here to get my UUID.
-            // OR: Update backend to handle Firebase UID lookup.
-            // Let's assume for this step we need to fetch profile to get UUID.
+            sender_id: effectiveUserId,
             receiver_id: id,
             content: newMessage,
-            created_at: new Date().toISOString() // For optimistic update
+            created_at: new Date().toISOString()
         };
 
         // Optimistic update
@@ -95,35 +117,24 @@ export default function ChatRoom() {
         setNewMessage('');
         scrollToBottom();
 
-        if (socket) {
-            // We need to resolve our DB ID first.
-            // Quick fix: fetch it if missing?
-            // Actually, `socket.emit` goes to backend. Backend *could* lookup.
-            // But existing backend just inserts. 
-            // Let's send the message. If it fails, we handle error.
-
-            // Wait, `sender_id` in `messages` table is UUID. `user.uid` is String.
-            // We MUST send UUID.
-            // I will fetch my profile ID in useEffect.
-
-            // ... see `fetchProfileId` below ...
-            if (myDbId) {
-                socket.emit('send_message', { ...messageData, sender_id: myDbId });
+        if (socket && isConnected) {
+            socket.emit('send_message', messageData);
+        } else {
+            // HTTP Fallback
+            try {
+                const token = await user.getIdToken();
+                await axios.post(`${API_URL}/api/messages`, {
+                    receiver_id: id,
+                    content: messageData.content
+                }, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            } catch (error) {
+                console.error("Failed to send message via HTTP:", error);
+                Alert.alert("Delivery Failed", "Could not send message. " + (error.response?.data?.error || error.message));
             }
         }
     };
-
-    const [myDbId, setMyDbId] = useState(null);
-    useEffect(() => {
-        const getProfileId = async () => {
-            const token = await user.getIdToken();
-            const res = await axios.get(`${API_URL}/api/users/profile`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setMyDbId(res.data.user.id);
-        }
-        getProfileId();
-    }, []);
 
     const scrollToBottom = () => {
         setTimeout(() => {
@@ -132,27 +143,35 @@ export default function ChatRoom() {
     };
 
     return (
-        <SafeAreaView className="flex-1 bg-slate-50" edges={['top']}>
-            {/* Header */}
-            <View className="bg-white p-4 border-b border-slate-200 flex-row items-center">
-                <TouchableOpacity onPress={() => router.back()} className="mr-3">
-                    <Ionicons name="arrow-back" size={24} color="#0f172a" />
+        <SafeAreaView className="flex-1 bg-slate-100" edges={['top']}>
+            {/* Premium Header */}
+            <View className="bg-blue-600 px-4 py-3 flex-row items-center shadow-md z-10">
+                <TouchableOpacity
+                    onPress={() => router.back()}
+                    className="mr-3 bg-white/20 p-2 rounded-full backdrop-blur-sm"
+                >
+                    <Ionicons name="arrow-back" size={20} color="white" />
                 </TouchableOpacity>
-                <Avatar className="h-8 w-8 mr-3">
-                    <AvatarFallback>{name?.[0] || 'U'}</AvatarFallback>
-                </Avatar>
-                <View>
-                    <Text className="font-bold text-slate-900">{name || 'Chat'}</Text>
-                    {isConnected && <Text className="text-xs text-green-600">Online</Text>}
+                <View className="relative">
+                    <Avatar className="h-10 w-10 border-2 border-white/30">
+                        <AvatarFallback className="bg-blue-800 text-white font-bold">{name?.[0] || 'U'}</AvatarFallback>
+                    </Avatar>
+                    {isConnected && <View className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-blue-600" />}
+                </View>
+                <View className="ml-3 flex-1">
+                    <Text className="font-bold text-white text-lg">{name || 'Chat'}</Text>
+                    <Text className="text-blue-200 text-xs font-medium">
+                        {isConnected ? 'Online' : 'Offline'}
+                    </Text>
                 </View>
                 <TouchableOpacity
                     onPress={() => router.push({
                         pathname: `/student/schedule/${id}`,
                         params: { name }
                     })}
-                    className="ml-auto p-2 bg-blue-50 rounded-full"
+                    className="p-2 bg-white/20 rounded-full backdrop-blur-sm"
                 >
-                    <Ionicons name="calendar" size={20} color="#2563eb" />
+                    <Ionicons name="calendar" size={20} color="white" />
                 </TouchableOpacity>
             </View>
 
@@ -160,48 +179,76 @@ export default function ChatRoom() {
             <FlatList
                 ref={flatListRef}
                 data={messages}
-                keyExtractor={(item, index) => item.id?.toString() || index.toString()}
-                contentContainerStyle={{ padding: 16 }}
-                renderItem={({ item }) => {
-                    // Check if sender is me. 
-                    // item.sender_id might be UUID. myDbId is UUID. user.uid is Firebase ID.
-                    // We compare with myDbId.
-                    const isMe = item.sender_id === myDbId || item.sender_id === user.uid; // Optimistic uses uid
+                keyExtractor={(item, index) => item.id?.toString() || index.toString() + Math.random()}
+                contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }) => {
+                    const isMe = item.sender_id === effectiveUserId;
+                    // Check if previous message was from same sender to group them (future enhancement)
 
                     return (
                         <View className={`mb-3 max-w-[80%] ${isMe ? 'self-end' : 'self-start'}`}>
-                            <View className={`p-3 rounded-2xl ${isMe ? 'bg-blue-600 rounded-tr-none' : 'bg-white border border-slate-200 rounded-tl-none'
-                                }`}>
-                                <Text className={isMe ? 'text-white' : 'text-slate-800'}>
+                            <View
+                                className={`px-4 py-3 shadow-sm ${isMe
+                                    ? 'bg-blue-600 rounded-2xl rounded-tr-sm'
+                                    : 'bg-white border border-slate-100 rounded-2xl rounded-tl-sm'
+                                    }`}
+                            >
+                                <Text className={`text-base leading-[22px] ${isMe ? 'text-white' : 'text-slate-800'}`}>
                                     {item.content}
                                 </Text>
                             </View>
-                            <Text className={`text-[10px] mt-1 text-slate-400 ${isMe ? 'text-right' : 'text-left'}`}>
-                                {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </Text>
+                            <View className={`flex-row items-center mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                <Text className="text-[10px] text-slate-400 font-medium">
+                                    {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                                </Text>
+                                {isMe && (
+                                    <Ionicons name="checkmark-done" size={12} color="#94a3b8" className="ml-1" />
+                                    // Blue checkmarks if seen? (future)
+                                )}
+                            </View>
                         </View>
                     );
                 }}
             />
 
-            {/* Input */}
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-                <View className="p-4 bg-white border-t border-slate-200 flex-row items-center">
-                    <TextInput
-                        className="flex-1 bg-slate-100 rounded-full px-4 py-2 mr-3 border border-transparent focus:border-blue-500"
-                        placeholder="Type a message..."
-                        value={newMessage}
-                        onChangeText={setNewMessage}
-                        onSubmitEditing={sendMessage}
-                    />
-                    <TouchableOpacity
-                        onPress={sendMessage}
-                        className={`h-10 w-10 rounded-full items-center justify-center ${newMessage.trim() ? 'bg-blue-600' : 'bg-slate-200'
-                            }`}
-                        disabled={!newMessage.trim()}
-                    >
-                        <Ionicons name="send" size={20} color={newMessage.trim() ? 'white' : '#94a3b8'} />
-                    </TouchableOpacity>
+            {/* Premium Input Area */}
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
+                <View className="px-4 py-3 bg-white border-t border-slate-100 shadow-lg shadow-slate-200">
+                    <View className="flex-row items-end bg-slate-100 rounded-[24px] px-2 py-2 border border-slate-200">
+                        <TouchableOpacity className="p-2 rounded-full bg-slate-200 mr-1 self-end mb-0.5">
+                            <Ionicons name="add" size={20} color="#64748b" />
+                        </TouchableOpacity>
+
+                        <TextInput
+                            className="flex-1 bg-transparent px-2 py-2.5 max-h-32 text-slate-900 text-base"
+                            placeholder="Type a message..."
+                            value={newMessage}
+                            onChangeText={setNewMessage}
+                            onSubmitEditing={sendMessage}
+                            multiline
+                            textAlignVertical="center"
+                            placeholderTextColor="#94a3b8"
+                            style={{ includeFontPadding: false }}
+                        />
+
+                        {newMessage.trim() ? (
+                            <TouchableOpacity
+                                onPress={sendMessage}
+                                className="h-10 w-10 rounded-full items-center justify-center bg-blue-600 shadow-sm shadow-blue-300 ml-1 self-end mb-0.5 scale-100 active:scale-95 transition-transform"
+                                disabled={!effectiveUserId}
+                            >
+                                <Ionicons name="send" size={18} color="white" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity className="h-10 w-10 rounded-full items-center justify-center bg-transparent ml-1 self-end mb-0.5">
+                                <Ionicons name="mic-outline" size={24} color="#64748b" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
             </KeyboardAvoidingView>
         </SafeAreaView>

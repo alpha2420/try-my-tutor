@@ -21,6 +21,12 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Inject Socket.IO into request
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
+
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const requirementRoutes = require('./routes/requirementRoutes');
@@ -56,8 +62,15 @@ io.on('connection', (socket) => {
 
         // Save to DB
         if (supabase) {
-            const { error } = await supabase.from('messages').insert([{ sender_id, receiver_id, content }]);
-            if (error) console.error('Error saving message:', error);
+            const { data: insertedMsg, error } = await supabase.from('messages').insert([{ sender_id, receiver_id, content }]).select().single();
+            if (error) {
+                console.error('Error saving message:', error);
+                // Notify sender of failure
+                io.to(sender_id).emit('message_error', { content, error: 'Failed to save message' });
+            } else {
+                // Notify sender of success (optional, or rely on optimistic)
+                // io.to(sender_id).emit('message_sent', insertedMsg);
+            }
         }
 
         // Emit to receiver

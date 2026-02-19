@@ -10,45 +10,82 @@ export const useSocket = () => useContext(SocketContext);
 export const SocketProvider = ({ children }) => {
     const [socket, setSocket] = useState(null);
     const [isConnected, setIsConnected] = useState(false);
-    const user = auth.currentUser;
+    const [userId, setUserId] = useState(null);
+    const [currentUser, setCurrentUser] = useState(null);
+
+    // Listen to Firebase Auth state changes
+    useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            setCurrentUser(user);
+        });
+        return unsubscribe;
+    }, []);
 
     useEffect(() => {
-        if (user) {
-            // Initialize socket
-            // Note: API_URL might contain 'http://', socket.io needs just the host or full url
-            const newSocket = io(API_URL, {
-                transports: ['websocket'],
-                autoConnect: true,
-            });
+        const initSocket = async () => {
+            if (currentUser) {
+                try {
+                    // Fetch DB ID
+                    const token = await currentUser.getIdToken();
+                    const response = await fetch(`${API_URL}/api/users/profile`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+                    const dbId = data.user?.id;
 
-            setSocket(newSocket);
+                    if (!dbId) {
+                        console.error("Could not fetch DB ID for socket");
+                        return;
+                    }
 
-            newSocket.on('connect', () => {
-                console.log('Socket connected:', newSocket.id);
-                setIsConnected(true);
-                // Join user room
-                newSocket.emit('join_room', user.uid); // Or use backend user ID if preferred, but UID is easier here initially
-                // Ideally, fetch backend ID and join that room.
-                // For now, let's assuming joining room by firebase UID is fine if backend maps it, 
-                // BUT backend uses `socket.join(userId)` in `join_room`.
-                // We should probably fetch the backend ID first. 
-                // Let's optimize: The backend `join_room` listener expects `userId`.
-                // Let's fetch it or pass it.
-            });
+                    setUserId(dbId);
 
-            newSocket.on('disconnect', () => {
-                console.log('Socket disconnected');
-                setIsConnected(false);
-            });
+                    // Initialize socket
+                    const newSocket = io(API_URL, {
+                        transports: ['websocket'],
+                        autoConnect: true,
+                    });
 
-            return () => {
-                newSocket.disconnect();
-            };
-        }
-    }, [user]);
+                    setSocket(newSocket);
+
+                    newSocket.on('connect', () => {
+                        console.log('Socket connected:', newSocket.id);
+                        setIsConnected(true);
+                        // Join user room with DB ID
+                        newSocket.emit('join_room', dbId);
+                        console.log(`Joined room with DB ID: ${dbId}`);
+                    });
+
+                    newSocket.on('disconnect', () => {
+                        console.log('Socket disconnected');
+                        setIsConnected(false);
+                    });
+
+                    return newSocket;
+
+                } catch (err) {
+                    console.error("Error initializing socket:", err);
+                }
+            } else {
+                // User logged out
+                if (socket) {
+                    socket.disconnect();
+                    setSocket(null);
+                    setIsConnected(false);
+                    setUserId(null);
+                }
+            }
+        };
+
+        const socketPromise = initSocket();
+
+        return () => {
+            socketPromise.then(s => s?.disconnect());
+        };
+    }, [currentUser]);
 
     return (
-        <SocketContext.Provider value={{ socket, isConnected }}>
+        <SocketContext.Provider value={{ socket, isConnected, userId }}>
             {children}
         </SocketContext.Provider>
     );

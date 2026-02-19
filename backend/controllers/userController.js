@@ -1,5 +1,73 @@
 const supabase = require('../config/supabaseClient');
 
+const getTutors = async (req, res) => {
+    const { search, subject, limit } = req.query;
+
+    try {
+        let query = supabase
+            .from('tutors')
+            .select(`
+                *,
+                users (id, full_name, email, role),
+                tutor_subjects (
+                    subjects (id, name)
+                )
+            `);
+
+        // We can't easily do complex filtering on joined tables with single Supabase call for all conditions
+        // especially fuzzy search on related tables.
+        // However, we can fetch and filter in memory if dataset is small, or use more complex Supabase filters.
+        // For 'search' (name or subject), it's tricky.
+        // Let's try to filter by subject first if provided.
+
+        if (subject && subject !== 'All') {
+            // This is hard in standard PostgREST syntax for M2M without embedding.
+            // We can filter where tutor_subjects.subjects.name eq subject.
+            // But simpler might be to get all and filter in JS for now, or use efficient RPC later.
+            // Given the scale, fetching all tutors (likely not many yet) and filtering is okay.
+        }
+
+        const { data: tutors, error } = await query;
+
+        if (error) throw error;
+
+        let processedTutors = tutors.map(tutor => ({
+            id: tutor.user_id,
+            name: tutor.users?.full_name || 'Tutor',
+            bio: tutor.bio,
+            hourly_rate: tutor.hourly_rate,
+            rating: tutor.rating,
+            subjects: tutor.tutor_subjects?.map(ts => ts.subjects?.name).filter(n => n) || [],
+            avatar: tutor.users?.full_name?.[0] || 'T'
+        }));
+
+        // Filter in memory for flexibility
+        if (search) {
+            const lowerSearch = search.toLowerCase();
+            processedTutors = processedTutors.filter(t =>
+                t.name.toLowerCase().includes(lowerSearch) ||
+                t.subjects.some(s => s.toLowerCase().includes(lowerSearch))
+            );
+        }
+
+        if (subject && subject !== 'All') {
+            processedTutors = processedTutors.filter(t =>
+                t.subjects.includes(subject)
+            );
+        }
+
+        if (limit) {
+            processedTutors = processedTutors.slice(0, parseInt(limit));
+        }
+
+        res.json({ tutors: processedTutors });
+
+    } catch (error) {
+        console.error('Error fetching tutors:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 const getProfile = async (req, res) => {
     const userId = req.user.uid; // Firebase UID from token
 
@@ -59,6 +127,7 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
     const userId = req.user.uid;
     const updates = req.body;
+    const { full_name, ...profileUpdates } = updates;
 
     try {
         const { data: user, error: userError } = await supabase
@@ -69,15 +138,26 @@ const updateProfile = async (req, res) => {
 
         if (userError) throw userError;
 
+        // 1. Update User Name if provided
+        if (full_name) {
+            const { error: nameError } = await supabase
+                .from('users')
+                .update({ full_name })
+                .eq('id', user.id);
+            if (nameError) throw nameError;
+        }
+
         if (user.role === 'student') {
-            const { error } = await supabase
-                .from('students')
-                .update(updates)
-                .eq('user_id', user.id);
-            if (error) throw error;
+            if (Object.keys(profileUpdates).length > 0) {
+                const { error } = await supabase
+                    .from('students')
+                    .update(profileUpdates)
+                    .eq('user_id', user.id);
+                if (error) throw error;
+            }
         } else if (user.role === 'tutor') {
             // Extract subjects and other specific fields
-            const { subjects, experience_years, qualifications, verification_documents, availability, ...otherUpdates } = updates;
+            const { subjects, experience_years, qualifications, verification_documents, availability, ...otherUpdates } = profileUpdates;
 
             const tutorUpdates = { ...otherUpdates };
 
@@ -140,4 +220,4 @@ const updateProfile = async (req, res) => {
     }
 };
 
-module.exports = { getProfile, updateProfile };
+module.exports = { getProfile, updateProfile, getTutors };

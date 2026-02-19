@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { FirebaseRecaptchaVerifierModal, FirebaseRecaptchaBanner } from 'expo-firebase-recaptcha';
 import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth, firebaseConfig } from '../firebaseConfig';
@@ -57,7 +58,7 @@ export default function PhoneSignIn({ onSignInSuccess, onSignInError }) {
     };
 
     return (
-        <View className="mb-4">
+        <View className="w-full">
             <FirebaseRecaptchaVerifierModal
                 ref={recaptchaVerifier}
                 firebaseConfig={firebaseConfig}
@@ -66,65 +67,82 @@ export default function PhoneSignIn({ onSignInSuccess, onSignInError }) {
             />
 
             {!verificationId ? (
-                <>
-                    <TextInput
-                        placeholder="+1 555-555-5555"
-                        placeholderTextColor="#9ca3af"
-                        className="border border-gray-300 rounded-lg p-3 mb-4 text-gray-900"
-                        value={phoneNumber}
-                        onChangeText={setPhoneNumber}
-                        keyboardType="phone-pad"
-                        autoComplete="tel"
-                    />
+                <View className="space-y-4">
+                    <View>
+                        <Text className="text-sm font-bold text-slate-500 uppercase mb-2 ml-1">Mobile Number</Text>
+                        <View className="flex-row items-center bg-slate-50 border border-slate-200 rounded-2xl px-4 h-14">
+                            <Ionicons name="call" size={20} color="#64748b" className="mr-3" />
+                            <TextInput
+                                placeholder="+1 555 555 5555"
+                                placeholderTextColor="#94a3b8"
+                                className="flex-1 bg-transparent border-0 h-full text-slate-900 text-lg font-medium"
+                                value={phoneNumber}
+                                onChangeText={setPhoneNumber}
+                                keyboardType="phone-pad"
+                                autoComplete="tel"
+                                style={{ includeFontPadding: false, textAlignVertical: 'center' }}
+                            />
+                        </View>
+                    </View>
+
                     <TouchableOpacity
-                        className="bg-blue-600 py-3 rounded-lg items-center"
+                        className="bg-blue-600 h-14 rounded-2xl items-center justify-center shadow-lg shadow-blue-200 active:scale-95 transition-transform mt-2"
                         onPress={sendVerification}
                         disabled={loading}
                     >
                         {loading ? (
                             <ActivityIndicator color="white" />
                         ) : (
-                            <Text className="text-white font-bold text-lg">Send Verification Code</Text>
+                            <Text className="text-white font-bold text-lg">Send Code</Text>
                         )}
                     </TouchableOpacity>
-                </>
+                </View>
             ) : (
-                <>
-                    <Text className="mb-2 text-gray-600">Enter code sent to {phoneNumber}</Text>
-                    <TextInput
-                        placeholder="123456"
-                        placeholderTextColor="#9ca3af"
-                        className="border border-gray-300 rounded-lg p-3 mb-4 text-gray-900 text-center tracking-widest text-lg"
-                        value={verificationCode}
-                        onChangeText={setVerificationCode}
-                        keyboardType="number-pad"
-                        maxLength={6}
-                    />
+                <View className="space-y-4">
+                    <View>
+                        <Text className="text-sm font-medium text-slate-500 text-center mb-4">
+                            Enter the 6-digit code sent to <Text className="font-bold text-slate-900">{phoneNumber}</Text>
+                        </Text>
+                        <View className="flex-row items-center bg-slate-50 border border-slate-200 rounded-2xl px-4 h-14">
+                            <Ionicons name="key" size={20} color="#64748b" className="mr-3" />
+                            <TextInput
+                                placeholder="123456"
+                                placeholderTextColor="#94a3b8"
+                                className="flex-1 bg-transparent border-0 h-full text-slate-900 text-xl font-bold text-center tracking-widest"
+                                value={verificationCode}
+                                onChangeText={setVerificationCode}
+                                keyboardType="number-pad"
+                                maxLength={6}
+                                style={{ includeFontPadding: false, textAlignVertical: 'center' }}
+                            />
+                        </View>
+                    </View>
+
                     <TouchableOpacity
-                        className="bg-green-600 py-3 rounded-lg items-center mb-2"
+                        className="bg-green-600 h-14 rounded-2xl items-center justify-center shadow-lg shadow-green-200 active:scale-95 transition-transform"
                         onPress={confirmCode}
                         disabled={loading}
                     >
                         {loading ? (
                             <ActivityIndicator color="white" />
                         ) : (
-                            <Text className="text-white font-bold text-lg">Confirm Code</Text>
+                            <Text className="text-white font-bold text-lg">Verify & Sign In</Text>
                         )}
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                        className="py-2 items-center"
+                        className="py-3 items-center"
                         onPress={() => {
                             setVerificationId('');
                             setVerificationCode('');
                         }}
                     >
-                        <Text className="text-blue-600">Change Phone Number</Text>
+                        <Text className="text-blue-600 font-medium">Change Phone Number</Text>
                     </TouchableOpacity>
-                </>
+                </View>
             )}
 
-            <View className="mt-4">
+            <View className="mt-4 opacity-0 h-0">
                 <FirebaseRecaptchaBanner />
             </View>
         </View>
