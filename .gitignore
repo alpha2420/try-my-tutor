@@ -1,3 +1,5 @@
 node_modules/
 .env
 .DS_Store
+
+backend/config/trymytutor-app-firebase-adminsdk-fbsvc-713afba6fc.json
